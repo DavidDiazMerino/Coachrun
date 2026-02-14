@@ -40,6 +40,9 @@ function drawPhaseTransition(ctx, p, toStadium) {
   }
 }
 
+const UI_SCALE = Math.min(W / 960, H / 540);
+const s = (value) => Math.round(value * UI_SCALE);
+
 function drawTrail(ctx, now, laneDrift, trailTheme) {
   const pulseBoost = trailTheme.pulse ? (Math.sin(now * 0.018) + 1.4) * 0.2 : 1;
   for (let i = 0; i < 7; i++) {
@@ -87,7 +90,7 @@ export default function CholoRun() {
 
   const canvasRef = useRef(null);
   const gameRef = useRef(null);
-  const touchRef = useRef({ x: 0, y: 0 });
+  const pointerRef = useRef({ x: 0, y: 0, active: false });
 
   const [gameState, setGameState] = useState("menu");
   const [finalScore, setFinalScore] = useState(0);
@@ -203,18 +206,18 @@ export default function CholoRun() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const onTouchStart = (e) => {
+    const onPointerDown = (e) => {
       e.preventDefault();
-      const t = e.touches[0];
-      touchRef.current = { x: t.clientX, y: t.clientY };
+      pointerRef.current = { x: e.clientX, y: e.clientY, active: true };
     };
 
-    const onTouchEnd = (e) => {
+    const onPointerUp = (e) => {
+      if (!pointerRef.current.active) return;
       e.preventDefault();
-      const t = e.changedTouches[0];
-      if (!t) return;
-      const dx = t.clientX - touchRef.current.x;
-      const dy = t.clientY - touchRef.current.y;
+
+      const dx = e.clientX - pointerRef.current.x;
+      const dy = e.clientY - pointerRef.current.y;
+      pointerRef.current.active = false;
 
       if (gameState !== "playing") {
         startGame();
@@ -223,22 +226,30 @@ export default function CholoRun() {
 
       if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 26) {
         handleInput(dx > 0 ? "right" : "left");
-      } else if (dy > 18) {
+        return;
+      }
+
+      if (dy > 20) {
         handleInput("duck");
-      } else if (Math.abs(dx) < 15 && Math.abs(dy) < 15) {
+        return;
+      }
+
+      if (Math.abs(dx) < 16 && Math.abs(dy) < 16) {
         const rect = canvas.getBoundingClientRect();
-        const tx = (t.clientX - rect.left) / rect.width;
+        const tx = (e.clientX - rect.left) / rect.width;
         if (tx < 0.33) handleInput("left");
         else if (tx > 0.66) handleInput("right");
         else handleInput("duck");
       }
     };
 
-    canvas.addEventListener("touchstart", onTouchStart, { passive: false });
-    canvas.addEventListener("touchend", onTouchEnd, { passive: false });
+    canvas.addEventListener("pointerdown", onPointerDown, { passive: false });
+    canvas.addEventListener("pointerup", onPointerUp, { passive: false });
+    canvas.addEventListener("pointercancel", onPointerUp, { passive: false });
     return () => {
-      canvas.removeEventListener("touchstart", onTouchStart);
-      canvas.removeEventListener("touchend", onTouchEnd);
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointercancel", onPointerUp);
     };
   }, [gameState, handleInput, startGame]);
 
@@ -262,49 +273,50 @@ export default function CholoRun() {
         drawCoachBack(ctx, W / 2, CAMERA_HEIGHT, now * 0.03, false, false, now, 0, cosmeticTheme.coach);
 
         ctx.fillStyle = "rgba(0,0,0,0.52)";
-        ctx.fillRect(W / 2 - 330, 86, 660, 310);
+        ctx.fillRect(W / 2 - s(330), s(86), s(660), s(310));
         ctx.textAlign = "center";
         ctx.fillStyle = COLORS.white;
-        ctx.font = "bold 56px monospace";
-        ctx.fillText("CHOLO RUN", W / 2, 148);
+        ctx.font = `bold ${s(56)}px monospace`;
+        ctx.fillText("CHOLO RUN", W / 2, s(148));
         ctx.fillStyle = COLORS.red;
-        ctx.font = "bold 22px monospace";
-        ctx.fillText("Pseudo primera persona detrás del míster", W / 2, 184);
+        ctx.font = `bold ${s(22)}px monospace`;
+        ctx.fillText("Pseudo primera persona detrás del míster", W / 2, s(184));
         ctx.fillStyle = "#CCCCCC";
-        ctx.font = "15px monospace";
-        ctx.fillText("Esquiva por carriles, agáchate a tiempo y supera estadios", W / 2, 212);
+        ctx.font = `${s(15)}px monospace`;
+        ctx.fillText("Esquiva por carriles, agáchate a tiempo y supera estadios", W / 2, s(212));
         ctx.fillStyle = COLORS.yellow;
-        ctx.font = "bold 16px monospace";
-        ctx.fillText("← → mover | ↓ / espacio agacharse", W / 2, 244);
+        ctx.font = `bold ${s(16)}px monospace`;
+        ctx.fillText("← → mover | ↓ / espacio agacharse", W / 2, s(244));
+        ctx.fillText("Desliza ← → y ↓ para jugar en móvil", W / 2, s(268));
 
         const blink = Math.sin(now * 0.006) > 0;
         if (blink) {
           ctx.fillStyle = COLORS.white;
-          ctx.font = "bold 20px monospace";
-          ctx.fillText("PULSA CUALQUIER TECLA O TOCA PARA EMPEZAR", W / 2, 288);
+          ctx.font = `bold ${s(20)}px monospace`;
+          ctx.fillText("PULSA CUALQUIER TECLA O TOCA PARA EMPEZAR", W / 2, s(306));
         }
 
         if (highScore > 0) {
           ctx.fillStyle = "#FFD54F";
-          ctx.font = "bold 18px monospace";
-          ctx.fillText(`RÉCORD: ${highScore}`, W / 2, 320);
+          ctx.font = `bold ${s(18)}px monospace`;
+          ctx.fillText(`RÉCORD: ${highScore}`, W / 2, s(338));
         }
 
         ctx.fillStyle = "#9E9E9E";
-        ctx.font = "14px monospace";
-        ctx.fillText(`Partidas: ${gamesPlayed || 0} · Mejor combo: ${bestCombo || 0} · Mejor fase: ${(bestPhase || 0) + 1}`, W / 2, 344);
+        ctx.font = `${s(14)}px monospace`;
+        ctx.fillText(`Partidas: ${gamesPlayed || 0} · Mejor combo: ${bestCombo || 0} · Mejor fase: ${(bestPhase || 0) + 1}`, W / 2, s(362));
 
         const completed = CHALLENGES.filter((c) => progression.challenges[c.id]?.completed).length;
         ctx.fillStyle = "#8EE69B";
-        ctx.fillText(`Desafíos: ${completed}/${CHALLENGES.length}`, W / 2, 366);
+        ctx.fillText(`Desafíos: ${completed}/${CHALLENGES.length}`, W / 2, s(384));
 
         if (nextChallenge) {
           const progress = progression.challenges[nextChallenge.id];
           ctx.fillStyle = "#B7D7FF";
-          ctx.fillText(`Siguiente objetivo: ${nextChallenge.label} (${progress?.current || 0}/${nextChallenge.target})`, W / 2, 386);
+          ctx.fillText(`Siguiente objetivo: ${nextChallenge.label} (${progress?.current || 0}/${nextChallenge.target})`, W / 2, s(404));
         } else {
           ctx.fillStyle = "#B7D7FF";
-          ctx.fillText("¡Todos los desafíos completados!", W / 2, 386);
+          ctx.fillText("¡Todos los desafíos completados!", W / 2, s(404));
         }
         return;
       }
@@ -316,35 +328,35 @@ export default function CholoRun() {
         drawGround(ctx, now * 0.02, 1);
 
         ctx.fillStyle = "rgba(0,0,0,0.62)";
-        ctx.fillRect(W / 2 - 260, 94, 520, 326);
+        ctx.fillRect(W / 2 - s(260), s(94), s(520), s(326));
         ctx.textAlign = "center";
         ctx.fillStyle = COLORS.red;
-        ctx.font = "bold 52px monospace";
-        ctx.fillText("GAME OVER", W / 2, 170);
+        ctx.font = `bold ${s(52)}px monospace`;
+        ctx.fillText("GAME OVER", W / 2, s(170));
 
         ctx.fillStyle = COLORS.white;
-        ctx.font = "bold 62px monospace";
-        ctx.fillText(`${finalScore}`, W / 2, 244);
+        ctx.font = `bold ${s(62)}px monospace`;
+        ctx.fillText(`${finalScore}`, W / 2, s(244));
         ctx.fillStyle = "#BBB";
-        ctx.font = "15px monospace";
-        ctx.fillText("PUNTOS", W / 2, 268);
+        ctx.font = `${s(15)}px monospace`;
+        ctx.fillText("PUNTOS", W / 2, s(268));
 
         if (finalScore >= highScore && finalScore > 0) {
           ctx.fillStyle = COLORS.yellow;
-          ctx.font = "bold 24px monospace";
-          ctx.fillText("¡NUEVO RÉCORD!", W / 2, 306);
+          ctx.font = `bold ${s(24)}px monospace`;
+          ctx.fillText("¡NUEVO RÉCORD!", W / 2, s(306));
         }
 
         const blink = Math.sin(now * 0.006) > 0;
         if (blink) {
           ctx.fillStyle = COLORS.white;
-          ctx.font = "bold 18px monospace";
-          ctx.fillText("TOCA O PULSA PARA REINICIAR", W / 2, 360);
+          ctx.font = `bold ${s(18)}px monospace`;
+          ctx.fillText("TOCA O PULSA PARA REINICIAR", W / 2, s(360));
         }
 
         ctx.fillStyle = "#9E9E9E";
-        ctx.font = "14px monospace";
-        ctx.fillText(`Partidas: ${gamesPlayed || 0} · Mejor combo: ${bestCombo || 0} · Mejor fase: ${(bestPhase || 0) + 1}`, W / 2, 390);
+        ctx.font = `${s(14)}px monospace`;
+        ctx.fillText(`Partidas: ${gamesPlayed || 0} · Mejor combo: ${bestCombo || 0} · Mejor fase: ${(bestPhase || 0) + 1}`, W / 2, s(390));
         return;
       }
 
@@ -434,15 +446,11 @@ export default function CholoRun() {
 
   return (
     <div style={{
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      minHeight: "100vh",
+      width: "100vw",
+      height: "100dvh",
       background: cosmeticTheme.palette.bg,
-      fontFamily: "monospace",
-      padding: "8px",
-      boxSizing: "border-box",
+      overflow: "hidden",
+      touchAction: "none",
       userSelect: "none",
     }}>
       <canvas
@@ -450,20 +458,16 @@ export default function CholoRun() {
         width={W}
         height={H}
         style={{
-          border: `3px solid ${cosmeticTheme.palette.border}`,
-          borderRadius: "4px",
-          maxWidth: "100%",
+          width: "100vw",
+          height: "100dvh",
+          display: "block",
           imageRendering: "pixelated",
           cursor: "pointer",
-          boxShadow: `0 0 40px ${cosmeticTheme.palette.glow}, 0 0 80px ${cosmeticTheme.palette.glow}`,
         }}
         onClick={() => {
           if (gameState !== "playing") startGame();
         }}
       />
-      <div style={{ color: "#6D6D6D", fontSize: "11px", marginTop: "10px", textAlign: "center", lineHeight: 1.6 }}>
-        Perspectiva pseudo 1ª persona (cámara detrás del entrenador) · ← → carril · ↓ / espacio agacharse
-      </div>
     </div>
   );
 }
