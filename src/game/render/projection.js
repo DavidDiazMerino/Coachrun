@@ -11,8 +11,8 @@ export function laneToX(lane, depth, cameraLane) {
 }
 
 export function getTrackColumns(depth, cameraLane) {
-  const center = W / 2 - (cameraLane - 1) * (18 + (1 - depth) * 12);
-  const trackWidth = 150 + (1 - depth) * 320;
+  const center = W / 2 - (cameraLane - 1) * (24 + (1 - depth) * 18);
+  const trackWidth = 180 + (1 - depth) * 380;
   const leftEdge = center - trackWidth / 2;
   return {
     leftEdge,

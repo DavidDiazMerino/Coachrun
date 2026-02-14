@@ -10,7 +10,7 @@ export function drawCoachBack(ctx, x, y, frame, isDucking, isInvincible, now, la
   const hair = cosmeticCoach.hair || COLORS.black;
 
   const bob = Math.sin(frame * 0.22) * 3;
-  const lean = laneLean * 9;
+  const lean = laneLean * 15;
   const jumpOffset = jumpHeight * -80;
 
   ctx.save();
