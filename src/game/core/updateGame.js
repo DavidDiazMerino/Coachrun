@@ -5,9 +5,9 @@ import {
   INVINCIBLE_MS,
   LANE_COUNT,
   PHASE_SCORE,
+  difficultyByPhase,
   SPAWN_MAX,
   SPAWN_MIN,
-  SPEED_GROW,
   W,
   CAMERA_HEIGHT,
 } from "../constants";
@@ -15,6 +15,7 @@ import { STADIUMS } from "../stadiums";
 import { depthScale, depthToY, laneToX } from "../render/projection";
 
 export function createInitialGameState() {
+  const spawnBase = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
   return {
     lane: 1,
     targetLane: 1,
@@ -34,7 +35,8 @@ export function createInitialGameState() {
     particles: [],
     floats: [],
     spawnTimer: 0,
-    spawnInterval: SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN),
+    spawnInterval: spawnBase,
+    spawnBaseline: spawnBase,
     phase: 0,
     maxPhase: 0,
     phaseTransition: -1,
@@ -42,8 +44,34 @@ export function createInitialGameState() {
     shakeTimer: 0,
     shakeX: 0,
     shakeY: 0,
+    directorAggro: 1,
+    recoveryTimer: 0,
+    telemetry: {
+      hitsTaken: 0,
+      nearMisses: 0,
+      avgCombo: 0,
+      comboAccumulator: 0,
+      comboSamples: 0,
+    },
     lastNow: Date.now(),
   };
+}
+
+function getPhaseDifficulty(phase) {
+  return difficultyByPhase[Math.min(phase, difficultyByPhase.length - 1)] || difficultyByPhase[0];
+}
+
+function getSpeedByCurve(score, phaseConfig) {
+  const curve = phaseConfig.speedCurve;
+  const earlyProgress = Math.min(score, curve.midStart);
+  const midProgress = Math.max(0, Math.min(score, curve.lateStart) - curve.midStart);
+  const lateProgress = Math.max(0, score - curve.lateStart);
+
+  const early = Math.min(curve.earlyCap - INITIAL_SPEED, earlyProgress * curve.earlySlope);
+  const mid = Math.min(curve.midCap - curve.earlyCap, midProgress * curve.midSlope);
+  const late = Math.min(curve.lateCap - curve.midCap, lateProgress * curve.lateSlope);
+
+  return INITIAL_SPEED + early + mid + late;
 }
 
 export function updateGameState(g, now, onGameOver) {
@@ -59,7 +87,9 @@ export function updateGameState(g, now, onGameOver) {
       g.phaseTransition = -1;
       g.obstacles = [];
       g.spawnTimer = 0;
-      g.spawnInterval = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
+      const spawnBase = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
+      g.spawnBaseline = spawnBase;
+      g.spawnInterval = spawnBase;
     }
   }
 
@@ -70,7 +100,24 @@ export function updateGameState(g, now, onGameOver) {
   }
 
   const stadium = STADIUMS[g.phase];
-  g.speed = INITIAL_SPEED + g.score * SPEED_GROW;
+  const phaseDifficulty = getPhaseDifficulty(g.phase);
+  const telemetry = g.telemetry;
+
+  telemetry.comboAccumulator += g.combo;
+  telemetry.comboSamples += 1;
+  telemetry.avgCombo = telemetry.comboAccumulator / telemetry.comboSamples;
+
+  if (g.recoveryTimer > 0) {
+    g.recoveryTimer -= 16.67 * dt;
+  }
+
+  const comboPressure = Math.max(0, (telemetry.avgCombo - 2) * 0.04);
+  const nearMissPressure = Math.min(0.14, telemetry.nearMisses * 0.0035);
+  const recoveryRelief = g.recoveryTimer > 0 ? 0.22 : 0;
+  const targetAggro = Math.max(0.72, Math.min(1.28, 1 + comboPressure + nearMissPressure - recoveryRelief));
+  g.directorAggro += (targetAggro - g.directorAggro) * 0.045 * dt;
+
+  g.speed = getSpeedByCurve(g.score, phaseDifficulty) * g.directorAggro;
   g.scrollX += g.speed * dt * 10;
   g.laneSmooth += (g.targetLane - g.laneSmooth) * 0.18 * dt;
 
@@ -112,8 +159,28 @@ export function updateGameState(g, now, onGameOver) {
       });
 
       const speedBias = Math.min(16, g.speed * 2.2);
-      const phaseBias = g.phase * 3;
-      g.spawnInterval = Math.max(28, SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN) - speedBias - phaseBias);
+      const phaseBias = phaseDifficulty.spawnBias.phaseBias;
+      const telemetryBias = Math.min(6, telemetry.avgCombo * 0.9 + telemetry.nearMisses * 0.06);
+      const safeBias = Math.max(0, 4 - telemetry.hitsTaken * 0.8);
+      const localJitter = (Math.random() - 0.5) * 4;
+
+      const spawnFloor = Math.max(SPAWN_MIN - 8, phaseDifficulty.spawnBias.minClamp);
+      const spawnCeil = Math.min(SPAWN_MAX + 8, phaseDifficulty.spawnBias.maxClamp);
+      const nextBaseline = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
+      g.spawnBaseline = Math.max(spawnFloor, Math.min(spawnCeil, nextBaseline));
+
+      g.spawnInterval = Math.max(
+        spawnFloor,
+        Math.min(
+          spawnCeil,
+          g.spawnBaseline
+            - speedBias * phaseDifficulty.spawnBias.speedBias
+            - phaseBias
+            - telemetryBias
+            + safeBias
+            + localJitter,
+        ),
+      );
     }
   }
 
@@ -141,6 +208,8 @@ export function updateGameState(g, now, onGameOver) {
         obs.active = false;
         g.lives -= 1;
         g.combo = 0;
+        telemetry.hitsTaken += 1;
+        g.recoveryTimer = 1800;
         g.isInvincible = true;
         g.invTimer = INVINCIBLE_MS;
         g.shakeTimer = 240;
@@ -159,6 +228,10 @@ export function updateGameState(g, now, onGameOver) {
         if (g.lives <= 0) {
           onGameOver(g.score);
         }
+      }
+
+      if (avoided && sameLane && obs.depth < 0.08) {
+        telemetry.nearMisses += 1;
       }
     }
 
