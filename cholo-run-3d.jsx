@@ -30,6 +30,32 @@ function drawPhaseTransition(ctx, p, toStadium) {
 }
 
 export default function CholoRun() {
+  const STORAGE_KEYS = {
+    highScore: "choloRun.highScore",
+    gamesPlayed: "choloRun.gamesPlayed",
+    bestCombo: "choloRun.bestCombo",
+    bestPhase: "choloRun.bestPhase",
+  };
+
+  const readStoredNumber = (key, fallback = 0) => {
+    try {
+      const value = window.localStorage.getItem(key);
+      if (value === null) return fallback;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+
+  const writeStoredNumber = (key, value) => {
+    try {
+      window.localStorage.setItem(key, String(value));
+    } catch {
+      // Modo incógnito / storage bloqueado: ignoramos sin romper el juego.
+    }
+  };
+
   const canvasRef = useRef(null);
   const gameRef = useRef(null);
   const touchRef = useRef({ x: 0, y: 0 });
@@ -37,6 +63,16 @@ export default function CholoRun() {
   const [gameState, setGameState] = useState("menu");
   const [finalScore, setFinalScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
+  const [gamesPlayed, setGamesPlayed] = useState(0);
+  const [bestCombo, setBestCombo] = useState(0);
+  const [bestPhase, setBestPhase] = useState(0);
+
+  useEffect(() => {
+    setHighScore(readStoredNumber(STORAGE_KEYS.highScore));
+    setGamesPlayed(readStoredNumber(STORAGE_KEYS.gamesPlayed));
+    setBestCombo(readStoredNumber(STORAGE_KEYS.bestCombo));
+    setBestPhase(readStoredNumber(STORAGE_KEYS.bestPhase));
+  }, []);
 
   const initGame = useCallback(() => {
     gameRef.current = createInitialGameState();
@@ -174,6 +210,10 @@ export default function CholoRun() {
           ctx.font = "bold 18px monospace";
           ctx.fillText(`RÉCORD: ${highScore}`, W / 2, 358);
         }
+
+        ctx.fillStyle = "#9E9E9E";
+        ctx.font = "14px monospace";
+        ctx.fillText(`Partidas: ${gamesPlayed || 0} · Mejor combo: ${bestCombo || 0} · Mejor fase: ${(bestPhase || 0) + 1}`, W / 2, 388);
         return;
       }
 
@@ -209,6 +249,10 @@ export default function CholoRun() {
           ctx.font = "bold 18px monospace";
           ctx.fillText("TOCA O PULSA PARA REINICIAR", W / 2, 360);
         }
+
+        ctx.fillStyle = "#9E9E9E";
+        ctx.font = "14px monospace";
+        ctx.fillText(`Partidas: ${gamesPlayed || 0} · Mejor combo: ${bestCombo || 0} · Mejor fase: ${(bestPhase || 0) + 1}`, W / 2, 390);
         return;
       }
 
@@ -217,7 +261,26 @@ export default function CholoRun() {
 
       const stadium = updateGameState(g, now, (score) => {
         setFinalScore(score);
-        setHighScore((prev) => Math.max(prev, score));
+        setHighScore((prev) => {
+          const nextHighScore = Math.max(prev, score);
+          if (nextHighScore > prev) {
+            writeStoredNumber(STORAGE_KEYS.highScore, nextHighScore);
+          }
+          return nextHighScore;
+        });
+
+        const nextGamesPlayed = gamesPlayed + 1;
+        const nextBestCombo = Math.max(bestCombo, g.maxCombo || 0);
+        const nextBestPhase = Math.max(bestPhase, g.maxPhase || g.phase || 0);
+
+        setGamesPlayed(nextGamesPlayed);
+        setBestCombo(nextBestCombo);
+        setBestPhase(nextBestPhase);
+
+        writeStoredNumber(STORAGE_KEYS.gamesPlayed, nextGamesPlayed);
+        writeStoredNumber(STORAGE_KEYS.bestCombo, nextBestCombo);
+        writeStoredNumber(STORAGE_KEYS.bestPhase, nextBestPhase);
+
         setGameState("gameover");
       });
 
@@ -261,7 +324,7 @@ export default function CholoRun() {
 
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [gameState, finalScore, highScore]);
+  }, [bestCombo, bestPhase, gameState, gamesPlayed, finalScore, highScore]);
 
   return (
     <div style={{
