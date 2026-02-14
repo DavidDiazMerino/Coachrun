@@ -1,10 +1,13 @@
 import { CAMERA_HEIGHT, COLORS, H, HORIZON_Y, LANE_COUNT, W } from "../constants";
 import { depthScale, depthToY, laneToX, px } from "./projection";
 
-export function drawGround(ctx, scrollX, cameraLane) {
+export function drawGround(ctx, scrollX, cameraLane, palette = {}) {
+  const grassTop = palette.grassTop || COLORS.grassB;
+  const grassBottom = palette.grassBottom || COLORS.grassA;
+
   const grad = ctx.createLinearGradient(0, HORIZON_Y, 0, H);
-  grad.addColorStop(0, COLORS.grassB);
-  grad.addColorStop(1, COLORS.grassA);
+  grad.addColorStop(0, grassTop);
+  grad.addColorStop(1, grassBottom);
   ctx.fillStyle = grad;
   ctx.fillRect(0, HORIZON_Y, W, H - HORIZON_Y);
 
