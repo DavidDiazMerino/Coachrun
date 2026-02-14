@@ -1,7 +1,7 @@
 import { COLORS } from "../constants";
 import { px } from "./projection";
 
-export function drawCoachBack(ctx, x, y, frame, isDucking, isInvincible, now, laneLean, cosmeticCoach = {}) {
+export function drawCoachBack(ctx, x, y, frame, isDucking, isInvincible, now, laneLean, cosmeticCoach = {}, jumpHeight = 0) {
   if (isInvincible && Math.floor(now / 70) % 2 === 0) return;
 
   const suit = cosmeticCoach.suit || COLORS.suit;
@@ -11,12 +11,16 @@ export function drawCoachBack(ctx, x, y, frame, isDucking, isInvincible, now, la
 
   const bob = Math.sin(frame * 0.22) * 3;
   const lean = laneLean * 9;
-  ctx.save();
-  ctx.translate(x, y + bob);
+  const jumpOffset = jumpHeight * -80;
 
+  ctx.save();
+  ctx.translate(x, y + bob + jumpOffset);
+
+  // Shadow (shrinks during jump)
+  const shadowScale = 1 - jumpHeight * 0.5;
   ctx.fillStyle = COLORS.shadow;
   ctx.beginPath();
-  ctx.ellipse(0, 42, 58, 14, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 42 - jumpOffset, 58 * shadowScale, 14 * shadowScale, 0, 0, Math.PI * 2);
   ctx.fill();
 
   const legSwing = Math.sin(frame * 0.32) * 12;

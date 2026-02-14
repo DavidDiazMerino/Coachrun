@@ -10,7 +10,7 @@ import { drawSky } from "./game/render/drawSky";
 import { drawStands } from "./game/render/drawStands";
 import { drawGround } from "./game/render/drawGround";
 import { drawCoachBack } from "./game/render/drawCoachBack";
-import { drawObstacle } from "./game/render/drawObstacle";
+import { drawObstacle, drawBooster } from "./game/render/drawObstacle";
 import { drawHUD } from "./game/render/drawHUD";
 import { px } from "./game/render/projection";
 import { createInitialGameState, updateGameState } from "./game/core/updateGame";
@@ -40,6 +40,49 @@ function drawPhaseTransition(ctx, p, toStadium) {
   }
 }
 
+function drawTrophy(ctx, x, y, now) {
+  const bob = Math.sin(now * 0.003) * 4;
+  const glow = 0.5 + Math.sin(now * 0.005) * 0.3;
+
+  ctx.save();
+  ctx.translate(x, y + bob);
+
+  // Glow
+  ctx.globalAlpha = glow * 0.4;
+  ctx.fillStyle = "#FFD600";
+  ctx.beginPath();
+  ctx.arc(0, -40, 60, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Cup body
+  px(ctx, -30, -80, 60, 50, "#FFD600");
+  px(ctx, -26, -76, 52, 42, "#FFF176");
+  // Handles
+  px(ctx, -42, -72, 14, 30, "#FFD600");
+  px(ctx, 28, -72, 14, 30, "#FFD600");
+  // Stem
+  px(ctx, -8, -30, 16, 20, "#FFD600");
+  // Base
+  px(ctx, -24, -12, 48, 12, "#FFD600");
+  px(ctx, -20, -8, 40, 8, "#FFF176");
+  // Star
+  px(ctx, -4, -64, 8, 8, "#FF6F00");
+
+  // Sparkle particles
+  for (let i = 0; i < 6; i++) {
+    const angle = now * 0.002 + i * 1.05;
+    const radius = 50 + Math.sin(now * 0.004 + i) * 10;
+    const sx = Math.cos(angle) * radius;
+    const sy = Math.sin(angle) * radius - 40;
+    ctx.globalAlpha = 0.6 + Math.sin(now * 0.006 + i) * 0.3;
+    px(ctx, sx - 2, sy - 2, 4, 4, "#FFFFFF");
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.restore();
+}
+
 const UI_SCALE = Math.min(W / 960, H / 540);
 const s = (value) => Math.round(value * UI_SCALE);
 
@@ -53,6 +96,13 @@ function drawTrail(ctx, now, laneDrift, trailTheme) {
     px(ctx, W / 2 - width / 2 - laneDrift * 10, y, width, 4, trailTheme.color);
   }
   ctx.globalAlpha = 1;
+}
+
+function formatTime(ms) {
+  const totalSec = Math.floor(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${min}:${sec.toString().padStart(2, "0")}`;
 }
 
 export default function CholoRun() {
@@ -94,6 +144,8 @@ export default function CholoRun() {
 
   const [gameState, setGameState] = useState("menu");
   const [finalScore, setFinalScore] = useState(0);
+  const [finalTime, setFinalTime] = useState(0);
+  const [shareText, setShareText] = useState(null);
   const [highScore, setHighScore] = useState(0);
   const [gamesPlayed, setGamesPlayed] = useState(0);
   const [bestCombo, setBestCombo] = useState(0);
@@ -161,12 +213,76 @@ export default function CholoRun() {
 
   const startGame = useCallback(() => {
     initGame();
+    setShareText(null);
     setGameState("playing");
   }, [initGame]);
 
+  const shareResult = useCallback(async (score, timeMs, isVictory) => {
+    const timeStr = formatTime(timeMs);
+    const text = isVictory
+      ? `He completado Cholo Run con ${score} puntos en ${timeStr}. CAMPEON!`
+      : `He llegado a ${score} puntos en Cholo Run en ${timeStr}. Puedes superarlo?`;
+
+    const url = window.location.href;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Cholo Run", text, url });
+        return;
+      } catch (e) {
+        if (e.name === "AbortError") return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(`${text}\n${url}`);
+      setShareText("Copiado!");
+      setTimeout(() => setShareText(null), 2000);
+    } catch {
+      // Silent fail
+    }
+  }, []);
+
+  const saveEndGameStats = useCallback((g, score) => {
+    setFinalScore(score);
+    setFinalTime(g.elapsedTime);
+    setHighScore((prev) => {
+      const nextHighScore = Math.max(prev, score);
+      if (nextHighScore > prev) {
+        writeStoredNumber(STORAGE_KEYS.highScore, nextHighScore);
+      }
+      return nextHighScore;
+    });
+
+    const nextGamesPlayed = gamesPlayed + 1;
+    const nextBestCombo = Math.max(bestCombo, g.maxCombo || 0);
+    const nextBestPhase = Math.max(bestPhase, g.maxPhase || g.phase || 0);
+    const nextTotalDodges = totalDodges + (g.telemetry?.dodges || 0);
+    const nextTotalNearMisses = totalNearMisses + (g.telemetry?.nearMisses || 0);
+    const nextBestNoDamageDodges = Math.max(bestNoDamageDodges, g.telemetry?.noDamageDodges || 0);
+    const perfectPhase3 = (g.maxPhase || g.phase || 0) >= 2 && g.telemetry?.hitsTaken === 0 ? 1 : 0;
+    const nextPhase3PerfectRuns = phase3PerfectRuns + perfectPhase3;
+
+    setGamesPlayed(nextGamesPlayed);
+    setBestCombo(nextBestCombo);
+    setBestPhase(nextBestPhase);
+    setTotalDodges(nextTotalDodges);
+    setTotalNearMisses(nextTotalNearMisses);
+    setBestNoDamageDodges(nextBestNoDamageDodges);
+    setPhase3PerfectRuns(nextPhase3PerfectRuns);
+
+    writeStoredNumber(STORAGE_KEYS.gamesPlayed, nextGamesPlayed);
+    writeStoredNumber(STORAGE_KEYS.bestCombo, nextBestCombo);
+    writeStoredNumber(STORAGE_KEYS.bestPhase, nextBestPhase);
+    writeStoredNumber(STORAGE_KEYS.totalDodges, nextTotalDodges);
+    writeStoredNumber(STORAGE_KEYS.totalNearMisses, nextTotalNearMisses);
+    writeStoredNumber(STORAGE_KEYS.bestNoDamageDodges, nextBestNoDamageDodges);
+    writeStoredNumber(STORAGE_KEYS.phase3PerfectRuns, nextPhase3PerfectRuns);
+  }, [gamesPlayed, bestCombo, bestPhase, totalDodges, totalNearMisses, bestNoDamageDodges, phase3PerfectRuns]);
+
   const handleInput = useCallback((action) => {
     if (gameState !== "playing") {
-      startGame();
+      if (action !== "share") startGame();
       return;
     }
 
@@ -178,6 +294,11 @@ export default function CholoRun() {
     else if (action === "duck") {
       g.isDucking = true;
       g.duckTimer = 390;
+    } else if (action === "jump") {
+      if (!g.isJumping) {
+        g.isJumping = true;
+        g.jumpTimer = 500;
+      }
     }
   }, [gameState, startGame]);
 
@@ -192,7 +313,10 @@ export default function CholoRun() {
       } else if (["ArrowDown", "KeyS", "Space"].includes(e.code)) {
         e.preventDefault();
         handleInput("duck");
-      } else if (["ArrowUp", "KeyW", "Enter"].includes(e.code)) {
+      } else if (["ArrowUp", "KeyW"].includes(e.code)) {
+        e.preventDefault();
+        handleInput(gameState === "playing" ? "jump" : "start");
+      } else if (e.code === "Enter") {
         e.preventDefault();
         handleInput("start");
       }
@@ -200,7 +324,7 @@ export default function CholoRun() {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleInput]);
+  }, [handleInput, gameState]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -219,6 +343,27 @@ export default function CholoRun() {
       const dy = e.clientY - pointerRef.current.y;
       pointerRef.current.active = false;
 
+      // Handle share button tap on end screens
+      if (gameState === "gameover" || gameState === "victory") {
+        const rect = canvas.getBoundingClientRect();
+        const tapX = (e.clientX - rect.left) / rect.width * W;
+        const tapY = (e.clientY - rect.top) / rect.height * H;
+
+        // Share button bounds
+        const btnLeft = W / 2 - s(100);
+        const btnTop = gameState === "victory" ? s(560) : s(310);
+        const btnW = s(200);
+        const btnH = s(40);
+
+        if (tapX >= btnLeft && tapX <= btnLeft + btnW && tapY >= btnTop && tapY <= btnTop + btnH) {
+          shareResult(finalScore, finalTime, gameState === "victory");
+          return;
+        }
+
+        startGame();
+        return;
+      }
+
       if (gameState !== "playing") {
         startGame();
         return;
@@ -231,6 +376,11 @@ export default function CholoRun() {
 
       if (dy > 20) {
         handleInput("duck");
+        return;
+      }
+
+      if (dy < -20) {
+        handleInput("jump");
         return;
       }
 
@@ -251,7 +401,7 @@ export default function CholoRun() {
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointercancel", onPointerUp);
     };
-  }, [gameState, handleInput, startGame]);
+  }, [gameState, handleInput, startGame, shareResult, finalScore, finalTime]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -270,10 +420,10 @@ export default function CholoRun() {
         drawStands(ctx, stadium, now * 0.02);
         drawGround(ctx, now * 0.02, 1);
         drawTrail(ctx, now, 0, cosmeticTheme.trail);
-        drawCoachBack(ctx, W / 2, CAMERA_HEIGHT, now * 0.03, false, false, now, 0, cosmeticTheme.coach);
+        drawCoachBack(ctx, W / 2, CAMERA_HEIGHT, now * 0.03, false, false, now, 0, cosmeticTheme.coach, 0);
 
         ctx.fillStyle = "rgba(0,0,0,0.52)";
-        ctx.fillRect(W / 2 - s(330), s(86), s(660), s(310));
+        ctx.fillRect(W / 2 - s(330), s(86), s(660), s(340));
         ctx.textAlign = "center";
         ctx.fillStyle = COLORS.white;
         ctx.font = `bold ${s(56)}px monospace`;
@@ -283,17 +433,17 @@ export default function CholoRun() {
         ctx.fillText("Pseudo primera persona detrás del míster", W / 2, s(184));
         ctx.fillStyle = "#CCCCCC";
         ctx.font = `${s(15)}px monospace`;
-        ctx.fillText("Esquiva por carriles, agáchate a tiempo y supera estadios", W / 2, s(212));
+        ctx.fillText("Esquiva, agáchate, salta y supera estadios", W / 2, s(212));
         ctx.fillStyle = COLORS.yellow;
-        ctx.font = `bold ${s(16)}px monospace`;
-        ctx.fillText("← → mover | ↓ / espacio agacharse", W / 2, s(244));
-        ctx.fillText("Desliza ← → y ↓ para jugar en móvil", W / 2, s(268));
+        ctx.font = `bold ${s(15)}px monospace`;
+        ctx.fillText("← → mover | ↓ agacharse | ↑ saltar", W / 2, s(244));
+        ctx.fillText("Desliza ← → ↓ ↑ en móvil", W / 2, s(266));
 
         const blink = Math.sin(now * 0.006) > 0;
         if (blink) {
           ctx.fillStyle = COLORS.white;
           ctx.font = `bold ${s(20)}px monospace`;
-          ctx.fillText("PULSA CUALQUIER TECLA O TOCA PARA EMPEZAR", W / 2, s(306));
+          ctx.fillText("TOCA O PULSA PARA EMPEZAR", W / 2, s(306));
         }
 
         if (highScore > 0) {
@@ -321,6 +471,56 @@ export default function CholoRun() {
         return;
       }
 
+      if (gameState === "victory") {
+        const stadium = STADIUMS[2];
+        drawSky(ctx, stadium);
+        drawStands(ctx, stadium, now * 0.02);
+        drawGround(ctx, now * 0.02, 1);
+
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(0, 0, W, H);
+
+        drawTrophy(ctx, W / 2, s(280), now);
+
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#FFD600";
+        ctx.font = `bold ${s(42)}px monospace`;
+        ctx.fillText("CAMPEON!", W / 2, s(420));
+
+        ctx.fillStyle = COLORS.white;
+        ctx.font = `bold ${s(52)}px monospace`;
+        ctx.fillText(`${finalScore}`, W / 2, s(480));
+        ctx.fillStyle = "#BBB";
+        ctx.font = `${s(14)}px monospace`;
+        ctx.fillText("PUNTOS", W / 2, s(500));
+
+        ctx.fillStyle = "#B0BEC5";
+        ctx.font = `bold ${s(18)}px monospace`;
+        ctx.fillText(`Tiempo: ${formatTime(finalTime)}`, W / 2, s(530));
+
+        // Share button
+        ctx.fillStyle = "#1E88E5";
+        ctx.fillRect(W / 2 - s(100), s(560), s(200), s(40));
+        ctx.fillStyle = COLORS.white;
+        ctx.font = `bold ${s(16)}px monospace`;
+        ctx.textAlign = "center";
+        ctx.fillText(shareText || "COMPARTIR", W / 2, s(585));
+
+        const blink = Math.sin(now * 0.006) > 0;
+        if (blink) {
+          ctx.fillStyle = COLORS.white;
+          ctx.font = `bold ${s(16)}px monospace`;
+          ctx.fillText("TOCA PARA VOLVER A JUGAR", W / 2, s(640));
+        }
+
+        if (finalScore >= highScore && finalScore > 0) {
+          ctx.fillStyle = COLORS.yellow;
+          ctx.font = `bold ${s(20)}px monospace`;
+          ctx.fillText("¡NUEVO RÉCORD!", W / 2, s(450));
+        }
+        return;
+      }
+
       if (gameState === "gameover") {
         const stadium = STADIUMS[Math.min(STADIUMS.length - 1, 1)];
         drawSky(ctx, stadium);
@@ -328,7 +528,7 @@ export default function CholoRun() {
         drawGround(ctx, now * 0.02, 1);
 
         ctx.fillStyle = "rgba(0,0,0,0.62)";
-        ctx.fillRect(W / 2 - s(260), s(94), s(520), s(326));
+        ctx.fillRect(W / 2 - s(260), s(94), s(520), s(360));
         ctx.textAlign = "center";
         ctx.fillStyle = COLORS.red;
         ctx.font = `bold ${s(52)}px monospace`;
@@ -341,65 +541,52 @@ export default function CholoRun() {
         ctx.font = `${s(15)}px monospace`;
         ctx.fillText("PUNTOS", W / 2, s(268));
 
+        ctx.fillStyle = "#B0BEC5";
+        ctx.font = `bold ${s(16)}px monospace`;
+        ctx.fillText(`Tiempo: ${formatTime(finalTime)}`, W / 2, s(290));
+
         if (finalScore >= highScore && finalScore > 0) {
           ctx.fillStyle = COLORS.yellow;
           ctx.font = `bold ${s(24)}px monospace`;
-          ctx.fillText("¡NUEVO RÉCORD!", W / 2, s(306));
+          ctx.fillText("¡NUEVO RÉCORD!", W / 2, s(206));
         }
+
+        // Share button
+        ctx.fillStyle = "#1E88E5";
+        ctx.fillRect(W / 2 - s(100), s(310), s(200), s(40));
+        ctx.fillStyle = COLORS.white;
+        ctx.font = `bold ${s(16)}px monospace`;
+        ctx.textAlign = "center";
+        ctx.fillText(shareText || "COMPARTIR", W / 2, s(335));
 
         const blink = Math.sin(now * 0.006) > 0;
         if (blink) {
           ctx.fillStyle = COLORS.white;
           ctx.font = `bold ${s(18)}px monospace`;
-          ctx.fillText("TOCA O PULSA PARA REINICIAR", W / 2, s(360));
+          ctx.fillText("TOCA O PULSA PARA REINICIAR", W / 2, s(395));
         }
 
         ctx.fillStyle = "#9E9E9E";
         ctx.font = `${s(14)}px monospace`;
-        ctx.fillText(`Partidas: ${gamesPlayed || 0} · Mejor combo: ${bestCombo || 0} · Mejor fase: ${(bestPhase || 0) + 1}`, W / 2, s(390));
+        ctx.fillText(`Partidas: ${gamesPlayed || 0} · Mejor combo: ${bestCombo || 0} · Mejor fase: ${(bestPhase || 0) + 1}`, W / 2, s(425));
         return;
       }
 
       const g = gameRef.current;
       if (!g) return;
 
-      const stadium = updateGameState(g, now, (score) => {
-        setFinalScore(score);
-        setHighScore((prev) => {
-          const nextHighScore = Math.max(prev, score);
-          if (nextHighScore > prev) {
-            writeStoredNumber(STORAGE_KEYS.highScore, nextHighScore);
-          }
-          return nextHighScore;
-        });
-
-        const nextGamesPlayed = gamesPlayed + 1;
-        const nextBestCombo = Math.max(bestCombo, g.maxCombo || 0);
-        const nextBestPhase = Math.max(bestPhase, g.maxPhase || g.phase || 0);
-        const nextTotalDodges = totalDodges + (g.telemetry?.dodges || 0);
-        const nextTotalNearMisses = totalNearMisses + (g.telemetry?.nearMisses || 0);
-        const nextBestNoDamageDodges = Math.max(bestNoDamageDodges, g.telemetry?.noDamageDodges || 0);
-        const perfectPhase3 = (g.maxPhase || g.phase || 0) >= 2 && g.telemetry?.hitsTaken === 0 ? 1 : 0;
-        const nextPhase3PerfectRuns = phase3PerfectRuns + perfectPhase3;
-
-        setGamesPlayed(nextGamesPlayed);
-        setBestCombo(nextBestCombo);
-        setBestPhase(nextBestPhase);
-        setTotalDodges(nextTotalDodges);
-        setTotalNearMisses(nextTotalNearMisses);
-        setBestNoDamageDodges(nextBestNoDamageDodges);
-        setPhase3PerfectRuns(nextPhase3PerfectRuns);
-
-        writeStoredNumber(STORAGE_KEYS.gamesPlayed, nextGamesPlayed);
-        writeStoredNumber(STORAGE_KEYS.bestCombo, nextBestCombo);
-        writeStoredNumber(STORAGE_KEYS.bestPhase, nextBestPhase);
-        writeStoredNumber(STORAGE_KEYS.totalDodges, nextTotalDodges);
-        writeStoredNumber(STORAGE_KEYS.totalNearMisses, nextTotalNearMisses);
-        writeStoredNumber(STORAGE_KEYS.bestNoDamageDodges, nextBestNoDamageDodges);
-        writeStoredNumber(STORAGE_KEYS.phase3PerfectRuns, nextPhase3PerfectRuns);
-
-        setGameState("gameover");
-      });
+      const stadium = updateGameState(
+        g,
+        now,
+        (score) => {
+          saveEndGameStats(g, score);
+          setGameState("gameover");
+        },
+        (score) => {
+          saveEndGameStats(g, score);
+          setGameState("victory");
+        },
+      );
 
       ctx.save();
       ctx.translate(g.shakeX, g.shakeY);
@@ -413,8 +600,13 @@ export default function CholoRun() {
         if (obs.depth > 0 && obs.depth < 1) drawObstacle(ctx, obs, stadium);
       });
 
+      // Draw boosters
+      g.boosters.forEach((b) => {
+        if (b.depth > 0 && b.depth < 1) drawBooster(ctx, b, stadium);
+      });
+
       drawTrail(ctx, now, g.targetLane - g.laneSmooth, cosmeticTheme.trail);
-      drawCoachBack(ctx, W / 2, CAMERA_HEIGHT, g.frame, g.isDucking, g.isInvincible, now, g.targetLane - g.laneSmooth, cosmeticTheme.coach);
+      drawCoachBack(ctx, W / 2, CAMERA_HEIGHT, g.frame, g.isDucking, g.isInvincible, now, g.targetLane - g.laneSmooth, cosmeticTheme.coach, g.jumpHeight);
 
       g.particles.forEach((p) => {
         ctx.globalAlpha = p.life;
@@ -431,7 +623,21 @@ export default function CholoRun() {
         ctx.globalAlpha = 1;
       });
 
-      drawHUD(ctx, g.score, g.lives, g.combo, g.phase);
+      drawHUD(ctx, g.score, g.lives, g.combo, g.phase, g.elapsedTime, g.activeBooster);
+
+      // Sub-phase label
+      if (g.subPhaseLabelTimer > 0 && g.subPhaseLabel) {
+        const alpha = Math.min(1, g.subPhaseLabelTimer / 30);
+        ctx.globalAlpha = alpha * 0.8;
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(W / 2 - 140, 70, 280, 30);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = COLORS.yellow;
+        ctx.font = "bold 16px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(g.subPhaseLabel, W / 2, 90);
+        ctx.globalAlpha = 1;
+      }
 
       if (g.phaseTransition >= 0) {
         drawPhaseTransition(ctx, g.phaseTransition, STADIUMS[g.phaseTransitionTarget]);
@@ -442,7 +648,7 @@ export default function CholoRun() {
 
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [bestCombo, bestNoDamageDodges, bestPhase, cosmeticTheme, finalScore, gameState, gamesPlayed, highScore, phase3PerfectRuns, progression.challenges, totalDodges, totalNearMisses]);
+  }, [bestCombo, bestNoDamageDodges, bestPhase, cosmeticTheme, finalScore, finalTime, gameState, gamesPlayed, highScore, phase3PerfectRuns, progression.challenges, saveEndGameStats, shareText, totalDodges, totalNearMisses]);
 
   return (
     <div style={{
@@ -465,7 +671,7 @@ export default function CholoRun() {
           cursor: "pointer",
         }}
         onClick={() => {
-          if (gameState !== "playing") startGame();
+          if (gameState !== "playing" && gameState !== "gameover" && gameState !== "victory") startGame();
         }}
       />
     </div>
