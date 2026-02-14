@@ -4,16 +4,16 @@ import {
   COLORS,
   H,
   W,
-} from "./src/game/constants";
-import { STADIUMS } from "./src/game/stadiums";
-import { drawSky } from "./src/game/render/drawSky";
-import { drawStands } from "./src/game/render/drawStands";
-import { drawGround } from "./src/game/render/drawGround";
-import { drawCoachBack } from "./src/game/render/drawCoachBack";
-import { drawObstacle } from "./src/game/render/drawObstacle";
-import { drawHUD } from "./src/game/render/drawHUD";
-import { px } from "./src/game/render/projection";
-import { createInitialGameState, updateGameState } from "./src/game/core/updateGame";
+} from "./game/constants";
+import { STADIUMS } from "./game/stadiums";
+import { drawSky } from "./game/render/drawSky";
+import { drawStands } from "./game/render/drawStands";
+import { drawGround } from "./game/render/drawGround";
+import { drawCoachBack } from "./game/render/drawCoachBack";
+import { drawObstacle } from "./game/render/drawObstacle";
+import { drawHUD } from "./game/render/drawHUD";
+import { px } from "./game/render/projection";
+import { createInitialGameState, updateGameState } from "./game/core/updateGame";
 import {
   CHALLENGES,
   PROGRESSION_KEYS,
@@ -23,7 +23,7 @@ import {
   resolveCosmeticTheme,
   safeReadJSON,
   safeWriteJSON,
-} from "./src/game/progression";
+} from "./game/progression";
 
 function drawPhaseTransition(ctx, p, toStadium) {
   ctx.fillStyle = `rgba(0,0,0,${Math.sin(p * Math.PI) * 0.86})`;
