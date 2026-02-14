@@ -26,6 +26,7 @@ export function createInitialGameState() {
     frame: 0,
     score: 0,
     combo: 0,
+    maxCombo: 0,
     lives: MAX_LIVES,
     speed: INITIAL_SPEED,
     scrollX: 0,
@@ -35,6 +36,7 @@ export function createInitialGameState() {
     spawnTimer: 0,
     spawnInterval: SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN),
     phase: 0,
+    maxPhase: 0,
     phaseTransition: -1,
     phaseTransitionTarget: 0,
     shakeTimer: 0,
@@ -53,6 +55,7 @@ export function updateGameState(g, now, onGameOver) {
     g.phaseTransition += 0.01 * dt;
     if (g.phaseTransition >= 1) {
       g.phase = g.phaseTransitionTarget;
+      g.maxPhase = Math.max(g.maxPhase, g.phase);
       g.phaseTransition = -1;
       g.obstacles = [];
       g.spawnTimer = 0;
@@ -162,6 +165,7 @@ export function updateGameState(g, now, onGameOver) {
     if (obs.active && obs.depth < -0.03) {
       obs.active = false;
       g.combo += 1;
+      g.maxCombo = Math.max(g.maxCombo, g.combo);
       const pts = stadium.obstacles[obs.type].pts * Math.min(5, g.combo);
       g.score += pts;
       g.floats.push({ x: W / 2, y: CAMERA_HEIGHT - 118, text: `+${pts}`, life: 1, color: g.combo >= 3 ? COLORS.yellow : COLORS.white });
