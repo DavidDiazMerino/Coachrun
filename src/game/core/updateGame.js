@@ -121,7 +121,7 @@ export function updateGameState(g, now, onGameOver) {
 
   g.speed = getSpeedByCurve(g.score, phaseDifficulty) * g.directorAggro;
   g.scrollX += g.speed * dt * 10;
-  g.laneSmooth += (g.targetLane - g.laneSmooth) * 0.18 * dt;
+  g.laneSmooth += (g.targetLane - g.laneSmooth) * 0.28 * dt;
 
   if (g.isDucking) {
     g.duckTimer -= 16.67 * dt;
@@ -201,7 +201,7 @@ export function updateGameState(g, now, onGameOver) {
 
     if (obs.active && obs.depth < 0.13 && obs.depth > -0.03) {
       const def = stadium.obstacles[obs.type];
-      const sameLane = Math.abs(obs.lane - g.laneSmooth) < 0.58;
+      const sameLane = Math.abs(obs.lane - g.laneSmooth) < 0.45;
       const avoidedByLane = !sameLane;
       const avoidedByDuck = def.avoidBy === "duck" && g.isDucking;
       const avoided = avoidedByLane || avoidedByDuck;

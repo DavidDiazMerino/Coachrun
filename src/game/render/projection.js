@@ -6,9 +6,20 @@ export function px(ctx, x, y, w, h, c) {
 }
 
 export function laneToX(lane, depth, cameraLane) {
-  const center = W / 2 - (cameraLane - 1) * (22 + (1 - depth) * 14);
-  const spread = 55 + (1 - depth) * 220;
-  return center + (lane - 1) * spread;
+  const { leftEdge, columnWidth } = getTrackColumns(depth, cameraLane);
+  return leftEdge + columnWidth * (lane + 1.5);
+}
+
+export function getTrackColumns(depth, cameraLane) {
+  const center = W / 2 - (cameraLane - 1) * (18 + (1 - depth) * 12);
+  const trackWidth = 150 + (1 - depth) * 320;
+  const leftEdge = center - trackWidth / 2;
+  return {
+    leftEdge,
+    rightEdge: leftEdge + trackWidth,
+    trackWidth,
+    columnWidth: trackWidth / 5,
+  };
 }
 
 export function depthToY(depth) {
