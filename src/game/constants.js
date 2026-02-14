@@ -1,9 +1,9 @@
-export const W = 960;
-export const H = 540;
+export const W = 540;
+export const H = 960;
 export const LANE_COUNT = 3;
-export const HORIZON_Y = 118;
+export const HORIZON_Y = 190;
 export const GROUND_BOTTOM = H - 22;
-export const CAMERA_HEIGHT = H - 84;
+export const CAMERA_HEIGHT = H - 150;
 
 export const INITIAL_SPEED = 2.8;
 export const SPEED_GROW = 0.00033;
