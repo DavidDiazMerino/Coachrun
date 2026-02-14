@@ -1,7 +1,18 @@
+// Frontend-only module: esta lógica depende de window/localStorage.
+// No importar desde código SSR/serverless.
 export const PROGRESSION_KEYS = {
   unlocks: "choloRun.unlocks",
   challenges: "choloRun.challenges",
 };
+
+export function isBrowserRuntime() {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+}
+
+function getStorage() {
+  if (!isBrowserRuntime()) return null;
+  return window.localStorage;
+}
 
 export const CHALLENGES = [
   { id: "firstKickoff", label: "Juega 1 partida", target: 1, metric: "gamesPlayed" },
@@ -57,7 +68,9 @@ export const COSMETIC_PRESETS = {
 
 export function safeReadJSON(key, fallback) {
   try {
-    const raw = window.localStorage.getItem(key);
+    const storage = getStorage();
+    if (!storage) return fallback;
+    const raw = storage.getItem(key);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? parsed : fallback;
@@ -68,7 +81,9 @@ export function safeReadJSON(key, fallback) {
 
 export function safeWriteJSON(key, value) {
   try {
-    window.localStorage.setItem(key, JSON.stringify(value));
+    const storage = getStorage();
+    if (!storage) return;
+    storage.setItem(key, JSON.stringify(value));
   } catch {
     // storage bloqueado
   }

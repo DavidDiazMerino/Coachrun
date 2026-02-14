@@ -20,6 +20,7 @@ import {
   deriveActiveCosmetics,
   evaluateProgress,
   getNextChallenge,
+  isBrowserRuntime,
   resolveCosmeticTheme,
   safeReadJSON,
   safeWriteJSON,
@@ -65,6 +66,7 @@ export default function CholoRun() {
 
   const readStoredNumber = (key, fallback = 0) => {
     try {
+      if (!isBrowserRuntime()) return fallback;
       const value = window.localStorage.getItem(key);
       if (value === null) return fallback;
       const parsed = Number(value);
@@ -76,6 +78,7 @@ export default function CholoRun() {
 
   const writeStoredNumber = (key, value) => {
     try {
+      if (!isBrowserRuntime()) return;
       window.localStorage.setItem(key, String(value));
     } catch {
       // Modo incógnito / storage bloqueado: ignoramos sin romper el juego.
@@ -114,6 +117,8 @@ export default function CholoRun() {
   const cosmeticTheme = useMemo(() => resolveCosmeticTheme(activeCosmetics), [activeCosmetics]);
 
   useEffect(() => {
+    if (!isBrowserRuntime()) return;
+
     setHighScore(readStoredNumber(STORAGE_KEYS.highScore));
     setGamesPlayed(readStoredNumber(STORAGE_KEYS.gamesPlayed));
     setBestCombo(readStoredNumber(STORAGE_KEYS.bestCombo));
@@ -142,6 +147,7 @@ export default function CholoRun() {
   }, []);
 
   useEffect(() => {
+    if (!isBrowserRuntime()) return;
     safeWriteJSON(PROGRESSION_KEYS.unlocks, progression.unlocks);
     safeWriteJSON(PROGRESSION_KEYS.challenges, progression.challenges);
   }, [progression.unlocks, progression.challenges]);
