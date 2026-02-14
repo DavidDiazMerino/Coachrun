@@ -178,49 +178,116 @@ export function drawBooster(ctx, booster, stadium) {
   const def = stadium.booster;
   if (!def) return;
 
+  const now = Date.now();
   ctx.save();
   ctx.translate(booster.screenX, booster.screenY);
-  ctx.scale(booster.scale, booster.scale);
 
-  const bob = Math.sin(Date.now() * 0.006) * 4;
-  const glow = 0.3 + Math.sin(Date.now() * 0.008) * 0.2;
+  const scalePulse = 1 + Math.sin(now * 0.008) * 0.12;
+  ctx.scale(booster.scale * scalePulse, booster.scale * scalePulse);
 
-  // Glow ring
+  const bob = Math.sin(now * 0.005) * 6;
+  const glow = 0.35 + Math.sin(now * 0.007) * 0.25;
+
+  // Outer glow aura
+  ctx.globalAlpha = glow * 0.3;
+  ctx.fillStyle = def.color;
+  ctx.beginPath();
+  ctx.arc(0, -16 + bob, 34, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Pulsing ring
   ctx.globalAlpha = glow;
   ctx.strokeStyle = def.color;
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.arc(0, -8 + bob, 18, 0, Math.PI * 2);
+  ctx.arc(0, -16 + bob, 28, 0, Math.PI * 2);
   ctx.stroke();
   ctx.globalAlpha = 1;
 
+  // Upward arrows (collect me!)
+  const arrowAlpha = 0.4 + Math.sin(now * 0.01) * 0.3;
+  ctx.globalAlpha = arrowAlpha;
+  for (let a = 0; a < 3; a++) {
+    const ay = 14 - a * 10 + ((now * 0.03 + a * 40) % 30);
+    px(ctx, -3, ay + bob, 6, 3, COLORS.white);
+    px(ctx, -5, ay + 3 + bob, 10, 2, COLORS.white);
+  }
+  ctx.globalAlpha = 1;
+
   switch (def.type) {
-    case "flowers":
-      // Bouquet of flowers
-      for (let i = 0; i < 5; i++) {
-        const angle = (i / 5) * Math.PI * 2 + Date.now() * 0.002;
-        const fx = Math.cos(angle) * 8;
-        const fy = Math.sin(angle) * 6 + bob - 8;
-        px(ctx, fx - 3, fy - 3, 6, 6, def.color);
-        px(ctx, fx - 1, fy - 1, 2, 2, "#FFEB3B");
+    case "flowers": {
+      // Big bouquet of flowers - corner kick flowers
+      px(ctx, -4, bob - 2, 8, 18, def.detail); // main stem
+      px(ctx, -8, bob + 2, 3, 14, def.detail); // left stem
+      px(ctx, 5, bob + 2, 3, 14, def.detail); // right stem
+      // Flower heads - big pink petals
+      for (let i = 0; i < 7; i++) {
+        const angle = (i / 7) * Math.PI * 2 + now * 0.0015;
+        const r = i < 3 ? 14 : 10;
+        const fx = Math.cos(angle) * r;
+        const fy = Math.sin(angle) * (r * 0.7) + bob - 18;
+        const size = i < 3 ? 10 : 8;
+        px(ctx, fx - size / 2, fy - size / 2, size, size, def.color);
+        px(ctx, fx - 2, fy - 2, 4, 4, "#FFEB3B"); // yellow center
       }
-      px(ctx, -2, bob, 4, 12, def.detail);
+      // Central large flower
+      px(ctx, -7, bob - 24, 14, 14, def.color);
+      px(ctx, -4, bob - 21, 8, 8, "#FFEB3B");
       break;
-    case "shield":
-      // Shield shape
-      px(ctx, -10, -14 + bob, 20, 24, def.color);
-      px(ctx, -8, -12 + bob, 16, 20, def.detail);
-      px(ctx, -4, -8 + bob, 8, 12, def.color);
+    }
+    case "shield": {
+      // Big shield shape - Atletico style
+      px(ctx, -16, -30 + bob, 32, 40, def.color);
+      px(ctx, -14, -28 + bob, 28, 36, def.detail);
+      // Shield point at bottom
+      px(ctx, -10, 8 + bob, 20, 8, def.color);
+      px(ctx, -6, 14 + bob, 12, 6, def.color);
+      // Star emblem in center
+      px(ctx, -5, -18 + bob, 10, 10, def.color);
+      px(ctx, -3, -16 + bob, 6, 6, COLORS.white);
+      // Highlight edge
+      px(ctx, -16, -30 + bob, 4, 40, "#42A5F5");
+      px(ctx, 12, -30 + bob, 4, 40, "#42A5F5");
       break;
-    case "whistle":
-      // Whistle
-      px(ctx, -8, -6 + bob, 16, 10, def.color);
-      px(ctx, 6, -4 + bob, 8, 6, def.detail);
-      px(ctx, -10, -8 + bob, 6, 4, def.color);
+    }
+    case "whistle": {
+      // Big golden whistle
+      px(ctx, -14, -12 + bob, 28, 16, def.color);
+      px(ctx, -12, -10 + bob, 24, 12, "#FFF176");
+      // Mouthpiece
+      px(ctx, 12, -8 + bob, 12, 10, def.detail);
+      px(ctx, 10, -6 + bob, 8, 6, "#BDBDBD");
+      // Ring/cord
+      px(ctx, -18, -16 + bob, 8, 6, def.color);
+      ctx.strokeStyle = def.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(-14, -20 + bob, 8, 0, Math.PI * 2);
+      ctx.stroke();
+      // Sound waves
+      const waveAlpha = 0.3 + Math.sin(now * 0.01) * 0.2;
+      ctx.globalAlpha = waveAlpha;
+      for (let w = 0; w < 3; w++) {
+        ctx.strokeStyle = def.color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(22 + w * 6, -4 + bob, 4 + w * 3, -0.5, 0.5);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
       break;
+    }
     default:
       break;
   }
+
+  // Name label below
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = COLORS.white;
+  ctx.font = "bold 11px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(def.name.toUpperCase(), 0, 28 + bob);
+  ctx.globalAlpha = 1;
 
   ctx.restore();
 }

@@ -154,7 +154,7 @@ export function updateGameState(g, now, onGameOver, onVictory) {
 
   g.speed = getSpeedByCurve(g.score, phaseDifficulty) * g.directorAggro * speedMultiplier;
   g.scrollX += g.speed * dt * 10;
-  g.laneSmooth += (g.targetLane - g.laneSmooth) * 0.28 * dt;
+  g.laneSmooth += (g.targetLane - g.laneSmooth) * 0.45 * dt;
 
   if (g.isDucking) {
     g.duckTimer -= 16.67 * dt;
