@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   CAMERA_HEIGHT,
   COLORS,
@@ -14,6 +14,16 @@ import { drawObstacle } from "./src/game/render/drawObstacle";
 import { drawHUD } from "./src/game/render/drawHUD";
 import { px } from "./src/game/render/projection";
 import { createInitialGameState, updateGameState } from "./src/game/core/updateGame";
+import {
+  CHALLENGES,
+  PROGRESSION_KEYS,
+  deriveActiveCosmetics,
+  evaluateProgress,
+  getNextChallenge,
+  resolveCosmeticTheme,
+  safeReadJSON,
+  safeWriteJSON,
+} from "./src/game/progression";
 
 function drawPhaseTransition(ctx, p, toStadium) {
   ctx.fillStyle = `rgba(0,0,0,${Math.sin(p * Math.PI) * 0.86})`;
@@ -29,12 +39,28 @@ function drawPhaseTransition(ctx, p, toStadium) {
   }
 }
 
+function drawTrail(ctx, now, laneDrift, trailTheme) {
+  const pulseBoost = trailTheme.pulse ? (Math.sin(now * 0.018) + 1.4) * 0.2 : 1;
+  for (let i = 0; i < 7; i++) {
+    const y = CAMERA_HEIGHT + 4 + i * 11;
+    const width = 40 - i * 3;
+    const alpha = Math.max(0.05, (0.4 - i * 0.04) * pulseBoost);
+    ctx.globalAlpha = alpha;
+    px(ctx, W / 2 - width / 2 - laneDrift * 10, y, width, 4, trailTheme.color);
+  }
+  ctx.globalAlpha = 1;
+}
+
 export default function CholoRun() {
   const STORAGE_KEYS = {
     highScore: "choloRun.highScore",
     gamesPlayed: "choloRun.gamesPlayed",
     bestCombo: "choloRun.bestCombo",
     bestPhase: "choloRun.bestPhase",
+    totalDodges: "choloRun.totalDodges",
+    totalNearMisses: "choloRun.totalNearMisses",
+    bestNoDamageDodges: "choloRun.bestNoDamageDodges",
+    phase3PerfectRuns: "choloRun.phase3PerfectRuns",
   };
 
   const readStoredNumber = (key, fallback = 0) => {
@@ -66,13 +92,59 @@ export default function CholoRun() {
   const [gamesPlayed, setGamesPlayed] = useState(0);
   const [bestCombo, setBestCombo] = useState(0);
   const [bestPhase, setBestPhase] = useState(0);
+  const [totalDodges, setTotalDodges] = useState(0);
+  const [totalNearMisses, setTotalNearMisses] = useState(0);
+  const [bestNoDamageDodges, setBestNoDamageDodges] = useState(0);
+  const [phase3PerfectRuns, setPhase3PerfectRuns] = useState(0);
+
+  const profile = useMemo(() => ({
+    gamesPlayed,
+    highScore,
+    bestCombo,
+    bestPhase,
+    totalDodges,
+    totalNearMisses,
+    bestNoDamageDodges,
+    phase3PerfectRuns,
+  }), [gamesPlayed, highScore, bestCombo, bestPhase, totalDodges, totalNearMisses, bestNoDamageDodges, phase3PerfectRuns]);
+
+  const progression = useMemo(() => evaluateProgress(profile), [profile]);
+  const nextChallenge = useMemo(() => getNextChallenge(progression.challenges), [progression.challenges]);
+  const activeCosmetics = useMemo(() => deriveActiveCosmetics(progression.unlocks), [progression.unlocks]);
+  const cosmeticTheme = useMemo(() => resolveCosmeticTheme(activeCosmetics), [activeCosmetics]);
 
   useEffect(() => {
     setHighScore(readStoredNumber(STORAGE_KEYS.highScore));
     setGamesPlayed(readStoredNumber(STORAGE_KEYS.gamesPlayed));
     setBestCombo(readStoredNumber(STORAGE_KEYS.bestCombo));
     setBestPhase(readStoredNumber(STORAGE_KEYS.bestPhase));
+    setTotalDodges(readStoredNumber(STORAGE_KEYS.totalDodges));
+    setTotalNearMisses(readStoredNumber(STORAGE_KEYS.totalNearMisses));
+    setBestNoDamageDodges(readStoredNumber(STORAGE_KEYS.bestNoDamageDodges));
+    setPhase3PerfectRuns(readStoredNumber(STORAGE_KEYS.phase3PerfectRuns));
+
+    const storedUnlocks = safeReadJSON(PROGRESSION_KEYS.unlocks, null);
+    const storedChallenges = safeReadJSON(PROGRESSION_KEYS.challenges, null);
+    if (!storedUnlocks || !storedChallenges) {
+      const initial = evaluateProgress({
+        gamesPlayed: readStoredNumber(STORAGE_KEYS.gamesPlayed),
+        highScore: readStoredNumber(STORAGE_KEYS.highScore),
+        bestCombo: readStoredNumber(STORAGE_KEYS.bestCombo),
+        bestPhase: readStoredNumber(STORAGE_KEYS.bestPhase),
+        totalDodges: readStoredNumber(STORAGE_KEYS.totalDodges),
+        totalNearMisses: readStoredNumber(STORAGE_KEYS.totalNearMisses),
+        bestNoDamageDodges: readStoredNumber(STORAGE_KEYS.bestNoDamageDodges),
+        phase3PerfectRuns: readStoredNumber(STORAGE_KEYS.phase3PerfectRuns),
+      });
+      safeWriteJSON(PROGRESSION_KEYS.unlocks, initial.unlocks);
+      safeWriteJSON(PROGRESSION_KEYS.challenges, initial.challenges);
+    }
   }, []);
+
+  useEffect(() => {
+    safeWriteJSON(PROGRESSION_KEYS.unlocks, progression.unlocks);
+    safeWriteJSON(PROGRESSION_KEYS.challenges, progression.challenges);
+  }, [progression.unlocks, progression.challenges]);
 
   const initGame = useCallback(() => {
     gameRef.current = createInitialGameState();
@@ -180,40 +252,54 @@ export default function CholoRun() {
         drawSky(ctx, stadium);
         drawStands(ctx, stadium, now * 0.02);
         drawGround(ctx, now * 0.02, 1);
-        drawCoachBack(ctx, W / 2, CAMERA_HEIGHT, now * 0.03, false, false, now, 0);
+        drawTrail(ctx, now, 0, cosmeticTheme.trail);
+        drawCoachBack(ctx, W / 2, CAMERA_HEIGHT, now * 0.03, false, false, now, 0, cosmeticTheme.coach);
 
         ctx.fillStyle = "rgba(0,0,0,0.52)";
-        ctx.fillRect(W / 2 - 330, 108, 660, 264);
+        ctx.fillRect(W / 2 - 330, 86, 660, 310);
         ctx.textAlign = "center";
         ctx.fillStyle = COLORS.white;
         ctx.font = "bold 56px monospace";
-        ctx.fillText("CHOLO RUN", W / 2, 172);
+        ctx.fillText("CHOLO RUN", W / 2, 148);
         ctx.fillStyle = COLORS.red;
         ctx.font = "bold 22px monospace";
-        ctx.fillText("Pseudo primera persona detrás del míster", W / 2, 208);
+        ctx.fillText("Pseudo primera persona detrás del míster", W / 2, 184);
         ctx.fillStyle = "#CCCCCC";
         ctx.font = "15px monospace";
-        ctx.fillText("Esquiva por carriles, agáchate a tiempo y supera estadios", W / 2, 236);
+        ctx.fillText("Esquiva por carriles, agáchate a tiempo y supera estadios", W / 2, 212);
         ctx.fillStyle = COLORS.yellow;
         ctx.font = "bold 16px monospace";
-        ctx.fillText("← → mover | ↓ / espacio agacharse", W / 2, 272);
+        ctx.fillText("← → mover | ↓ / espacio agacharse", W / 2, 244);
 
         const blink = Math.sin(now * 0.006) > 0;
         if (blink) {
           ctx.fillStyle = COLORS.white;
           ctx.font = "bold 20px monospace";
-          ctx.fillText("PULSA CUALQUIER TECLA O TOCA PARA EMPEZAR", W / 2, 326);
+          ctx.fillText("PULSA CUALQUIER TECLA O TOCA PARA EMPEZAR", W / 2, 288);
         }
 
         if (highScore > 0) {
           ctx.fillStyle = "#FFD54F";
           ctx.font = "bold 18px monospace";
-          ctx.fillText(`RÉCORD: ${highScore}`, W / 2, 358);
+          ctx.fillText(`RÉCORD: ${highScore}`, W / 2, 320);
         }
 
         ctx.fillStyle = "#9E9E9E";
         ctx.font = "14px monospace";
-        ctx.fillText(`Partidas: ${gamesPlayed || 0} · Mejor combo: ${bestCombo || 0} · Mejor fase: ${(bestPhase || 0) + 1}`, W / 2, 388);
+        ctx.fillText(`Partidas: ${gamesPlayed || 0} · Mejor combo: ${bestCombo || 0} · Mejor fase: ${(bestPhase || 0) + 1}`, W / 2, 344);
+
+        const completed = CHALLENGES.filter((c) => progression.challenges[c.id]?.completed).length;
+        ctx.fillStyle = "#8EE69B";
+        ctx.fillText(`Desafíos: ${completed}/${CHALLENGES.length}`, W / 2, 366);
+
+        if (nextChallenge) {
+          const progress = progression.challenges[nextChallenge.id];
+          ctx.fillStyle = "#B7D7FF";
+          ctx.fillText(`Siguiente objetivo: ${nextChallenge.label} (${progress?.current || 0}/${nextChallenge.target})`, W / 2, 386);
+        } else {
+          ctx.fillStyle = "#B7D7FF";
+          ctx.fillText("¡Todos los desafíos completados!", W / 2, 386);
+        }
         return;
       }
 
@@ -272,14 +358,27 @@ export default function CholoRun() {
         const nextGamesPlayed = gamesPlayed + 1;
         const nextBestCombo = Math.max(bestCombo, g.maxCombo || 0);
         const nextBestPhase = Math.max(bestPhase, g.maxPhase || g.phase || 0);
+        const nextTotalDodges = totalDodges + (g.telemetry?.dodges || 0);
+        const nextTotalNearMisses = totalNearMisses + (g.telemetry?.nearMisses || 0);
+        const nextBestNoDamageDodges = Math.max(bestNoDamageDodges, g.telemetry?.noDamageDodges || 0);
+        const perfectPhase3 = (g.maxPhase || g.phase || 0) >= 2 && g.telemetry?.hitsTaken === 0 ? 1 : 0;
+        const nextPhase3PerfectRuns = phase3PerfectRuns + perfectPhase3;
 
         setGamesPlayed(nextGamesPlayed);
         setBestCombo(nextBestCombo);
         setBestPhase(nextBestPhase);
+        setTotalDodges(nextTotalDodges);
+        setTotalNearMisses(nextTotalNearMisses);
+        setBestNoDamageDodges(nextBestNoDamageDodges);
+        setPhase3PerfectRuns(nextPhase3PerfectRuns);
 
         writeStoredNumber(STORAGE_KEYS.gamesPlayed, nextGamesPlayed);
         writeStoredNumber(STORAGE_KEYS.bestCombo, nextBestCombo);
         writeStoredNumber(STORAGE_KEYS.bestPhase, nextBestPhase);
+        writeStoredNumber(STORAGE_KEYS.totalDodges, nextTotalDodges);
+        writeStoredNumber(STORAGE_KEYS.totalNearMisses, nextTotalNearMisses);
+        writeStoredNumber(STORAGE_KEYS.bestNoDamageDodges, nextBestNoDamageDodges);
+        writeStoredNumber(STORAGE_KEYS.phase3PerfectRuns, nextPhase3PerfectRuns);
 
         setGameState("gameover");
       });
@@ -296,7 +395,8 @@ export default function CholoRun() {
         if (obs.depth > 0 && obs.depth < 1) drawObstacle(ctx, obs, stadium);
       });
 
-      drawCoachBack(ctx, W / 2, CAMERA_HEIGHT, g.frame, g.isDucking, g.isInvincible, now, g.targetLane - g.laneSmooth);
+      drawTrail(ctx, now, g.targetLane - g.laneSmooth, cosmeticTheme.trail);
+      drawCoachBack(ctx, W / 2, CAMERA_HEIGHT, g.frame, g.isDucking, g.isInvincible, now, g.targetLane - g.laneSmooth, cosmeticTheme.coach);
 
       g.particles.forEach((p) => {
         ctx.globalAlpha = p.life;
@@ -324,7 +424,7 @@ export default function CholoRun() {
 
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [bestCombo, bestPhase, gameState, gamesPlayed, finalScore, highScore]);
+  }, [bestCombo, bestNoDamageDodges, bestPhase, cosmeticTheme, finalScore, gameState, gamesPlayed, highScore, phase3PerfectRuns, progression.challenges, totalDodges, totalNearMisses]);
 
   return (
     <div style={{
@@ -333,7 +433,7 @@ export default function CholoRun() {
       alignItems: "center",
       justifyContent: "center",
       minHeight: "100vh",
-      background: "#0A0D19",
+      background: cosmeticTheme.palette.bg,
       fontFamily: "monospace",
       padding: "8px",
       boxSizing: "border-box",
@@ -344,12 +444,12 @@ export default function CholoRun() {
         width={W}
         height={H}
         style={{
-          border: "3px solid #CB3234",
+          border: `3px solid ${cosmeticTheme.palette.border}`,
           borderRadius: "4px",
           maxWidth: "100%",
           imageRendering: "pixelated",
           cursor: "pointer",
-          boxShadow: "0 0 40px rgba(203,50,52,0.3), 0 0 80px rgba(203,50,52,0.1)",
+          boxShadow: `0 0 40px ${cosmeticTheme.palette.glow}, 0 0 80px ${cosmeticTheme.palette.glow}`,
         }}
         onClick={() => {
           if (gameState !== "playing") startGame();

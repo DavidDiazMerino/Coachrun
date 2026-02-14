@@ -49,6 +49,8 @@ export function createInitialGameState() {
     telemetry: {
       hitsTaken: 0,
       nearMisses: 0,
+      dodges: 0,
+      noDamageDodges: 0,
       avgCombo: 0,
       comboAccumulator: 0,
       comboSamples: 0,
@@ -205,6 +207,7 @@ export function updateGameState(g, now, onGameOver) {
       const avoided = avoidedByLane || avoidedByDuck;
 
       if (!avoided && !g.isInvincible) {
+        telemetry.noDamageDodges = 0;
         obs.active = false;
         g.lives -= 1;
         g.combo = 0;
@@ -238,6 +241,8 @@ export function updateGameState(g, now, onGameOver) {
     if (obs.active && obs.depth < -0.03) {
       obs.active = false;
       g.combo += 1;
+      telemetry.dodges += 1;
+      if (telemetry.hitsTaken === 0) telemetry.noDamageDodges += 1;
       g.maxCombo = Math.max(g.maxCombo, g.combo);
       const pts = stadium.obstacles[obs.type].pts * Math.min(5, g.combo);
       g.score += pts;
